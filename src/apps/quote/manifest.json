@@ -1,0 +1,7 @@
+{
+  "id": "quote",
+  "name": "Daily Quote",
+  "description": "A random inspirational quote from ZenQuotes (zenquotes.io), with a bundled quotes.json fallback if offline.",
+  "schedule": [{ "cron": "0 12 * * *", "label": "Midday" }],
+  "config": {}
+}

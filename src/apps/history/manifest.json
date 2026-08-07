@@ -1,0 +1,7 @@
+{
+  "id": "history",
+  "name": "On This Day",
+  "description": "A historical event that happened on today's date, via the OnThisDay API (today.zenquotes.io) — no API key required.",
+  "schedule": [{ "cron": "0 10 * * *", "label": "Morning" }],
+  "config": {}
+}

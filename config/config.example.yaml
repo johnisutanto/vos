@@ -1,0 +1,44 @@
+# Vestaboard OS configuration.
+# Copy to config/config.yaml and adjust. This file is the source of truth for
+# the daily schedule. It can override each app's manifest defaults.
+
+board:
+  # Flagship dimensions. The Local API expects a rows x columns grid of codes.
+  rows: 6
+  columns: 22
+  # Timezone label used for documentation/display only. Cron fires in the
+  # HOST's local timezone — see README (esp. the market app note re: 4 PM ET).
+  timezone: America/Los_Angeles
+
+# Global write policy.
+options:
+  # If a scheduled render fails, leave the board on its previous content
+  # rather than blanking it.
+  keepOnError: true
+
+# The rotation. Each entry maps a cron expression to an app id.
+# Cron format: "minute hour day month weekday" (node-cron, host timezone).
+schedule:
+  - cron: "0 8 * * *"    # 8:00 AM — morning weather
+    app: weather
+  - cron: "0 10 * * *"   # 10:00 AM — on this day in history
+    app: history
+  - cron: "0 12 * * *"   # 12:00 PM — daily quote
+    app: quote
+  - cron: "0 14 * * 1-5" # 2:00 PM PT weekdays (after 4 PM ET close) — market wrap
+    app: market
+  - cron: "0 16 * * *"   # 4:00 PM — currency exchange
+    app: currency
+  - cron: "0 18 * * *"   # 6:00 PM — headline news
+    app: news
+
+# Optional per-app config overrides. Keys here are merged over the app's
+# manifest.config. Example:
+#
+# apps:
+#   weather:
+#     latitude: 47.6837
+#     longitude: -122.2969
+#   market:
+#     tickers: ["^spx", "^dji", "^ndq"]
+apps: {}

@@ -1,0 +1,30 @@
+{
+  "name": "vos",
+  "version": "0.1.0",
+  "description": "Vestaboard OS — a lightweight Node.js service that rotates useful content (weather, quotes, markets, news) onto a Vestaboard via the Local API, with a pluggable app model and an admin website.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "vos": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "enable": "node src/index.js enable",
+    "push": "node src/index.js push",
+    "check": "node scripts/check.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "js-yaml": "^4.1.0",
+    "node-cron": "^3.0.3",
+    "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "license": "MIT"
+}

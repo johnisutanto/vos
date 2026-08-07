@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vestaboard OS — Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Vestaboard <span>OS</span></h1>
+    <div id="status" class="status"></div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Daily Schedule</h2>
+      <div id="timeline" class="timeline"></div>
+    </section>
+
+    <section>
+      <h2>Save current board</h2>
+      <p class="hint">Send a favorite to the board from the Vestaboard app, then save it here as gallery art.</p>
+      <div class="row">
+        <input id="capture-name" type="text" placeholder="Design name (e.g. space-invader)" />
+        <button id="capture-btn">Save current board</button>
+      </div>
+      <div id="capture-msg" class="msg"></div>
+    </section>
+
+    <section>
+      <h2>Apps</h2>
+      <p class="hint">Live preview of each screen. "Push now" renders and writes to the board.</p>
+      <div id="apps" class="apps"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

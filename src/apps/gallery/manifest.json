@@ -1,0 +1,7 @@
+{
+  "id": "gallery",
+  "name": "Art Gallery",
+  "description": "Randomly displays one of your saved Vestaboard art designs. Capture favorites with `vos capture <name>` or the admin 'Save current board' button.",
+  "schedule": [{ "cron": "0 20 * * *", "label": "Evening art" }],
+  "config": {}
+}

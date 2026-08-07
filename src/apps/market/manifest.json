@@ -1,0 +1,14 @@
+{
+  "id": "market",
+  "name": "Market Wrap",
+  "description": "End-of-day levels and % change for major indices via Yahoo Finance — no API key required.",
+  "schedule": [{ "cron": "0 13 * * *", "label": "Afternoon (after 4 PM ET close)" }],
+  "config": {
+    "tickers": ["MSFT", "CRM", "NVDA"],
+    "labels": {
+      "MSFT": "MSFT",
+      "CRM": "CRM",
+      "NVDA": "NVDA"
+    }
+  }
+}

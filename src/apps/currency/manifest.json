@@ -1,0 +1,10 @@
+{
+  "id": "currency",
+  "name": "Currency Exchange",
+  "description": "USD exchange rates for EUR, IDR, AUD, JPY, and CAD via open.er-api.com (exchangerate-api.com) — no API key required.",
+  "schedule": [{ "cron": "0 16 * * *", "label": "Afternoon" }],
+  "config": {
+    "base": "USD",
+    "targets": ["EUR", "IDR", "AUD", "JPY", "CAD"]
+  }
+}

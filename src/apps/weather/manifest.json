@@ -1,0 +1,11 @@
+{
+  "id": "weather",
+  "name": "Local Weather",
+  "description": "Current conditions (°C), today's high/low, humidity, and air quality for ZIP 98115 (Seattle) via Open-Meteo — no API key required.",
+  "schedule": [{ "cron": "0 8 * * *", "label": "Morning" }],
+  "config": {
+    "zip": "98115",
+    "latitude": 47.6837,
+    "longitude": -122.2969
+  }
+}
