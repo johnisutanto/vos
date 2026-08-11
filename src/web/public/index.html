@@ -18,6 +18,22 @@
       <div id="timeline" class="timeline"></div>
     </section>
 
+    <section id="service-section" hidden>
+      <h2>Background service</h2>
+      <p class="hint">Keeps vos running after reboot so the schedule above fires without a terminal open.</p>
+      <div class="service">
+        <label class="switch">
+          <input type="checkbox" id="service-toggle" aria-label="Run vos as a background service" />
+          <span class="slider"></span>
+        </label>
+        <div>
+          <div id="service-state" class="name">Checking…</div>
+          <div id="service-detail" class="desc"></div>
+        </div>
+      </div>
+      <div id="service-msg" class="msg"></div>
+    </section>
+
     <section>
       <h2>Save current board</h2>
       <p class="hint">Send a favorite to the board from the Vestaboard app, then save it here as gallery art.</p>

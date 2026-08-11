@@ -161,6 +161,106 @@ async function loadApps() {
   return apps;
 }
 
+// Poll until an admin server answers again, used across a service handoff
+// where the process serving this page exits and launchd starts a new one.
+async function waitForServer({ tries = 30, delayMs = 500 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      const res = await fetch('/api/service', { cache: 'no-store' });
+      if (res.ok) return true;
+    } catch {
+      // Still down — keep waiting.
+    }
+  }
+  return false;
+}
+
+function renderService(state) {
+  const toggle = document.getElementById('service-toggle');
+  const label = document.getElementById('service-state');
+  const detail = document.getElementById('service-detail');
+
+  toggle.checked = state.running;
+  toggle.disabled = false;
+  label.textContent = state.running ? 'Enabled' : 'Disabled';
+  detail.textContent = state.running
+    ? `Running in the background (pid ${state.pid}). Survives reboot.`
+    : 'Not running in the background. The schedule only fires while a terminal runs vos.';
+}
+
+async function loadService() {
+  const section = document.getElementById('service-section');
+  const msg = document.getElementById('service-msg');
+  const toggle = document.getElementById('service-toggle');
+
+  let state;
+  try {
+    state = await api('/api/service');
+  } catch {
+    // 403 for non-loopback callers, or the route is unavailable. Either way
+    // there is nothing actionable here, so leave the section hidden.
+    return;
+  }
+  if (!state.supported) return;
+
+  section.hidden = false;
+  renderService(state);
+
+  toggle.onchange = async () => {
+    const enabling = toggle.checked;
+    toggle.disabled = true;
+    msg.className = 'msg';
+    msg.textContent = enabling ? 'Installing…' : 'Stopping…';
+
+    let result;
+    try {
+      result = await api('/api/service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabling }),
+      });
+    } catch (err) {
+      msg.className = 'msg bad';
+      msg.textContent = err.message;
+      toggle.checked = !enabling;
+      toggle.disabled = false;
+      return;
+    }
+
+    if (enabling && result.handoff) {
+      msg.textContent = 'Handing off to the background service…';
+      const back = await waitForServer();
+      if (back) {
+        msg.className = 'msg ok';
+        msg.textContent = 'Enabled. The background service is now serving this page.';
+        loadService();
+      } else {
+        msg.className = 'msg bad';
+        msg.textContent = 'Started, but the admin site did not come back. Check logs/service.err.log.';
+      }
+      return;
+    }
+
+    if (!enabling) {
+      msg.className = 'msg ok';
+      if (result.stoppedSelf) {
+        // The process that would answer /api/service just exited, so paint the
+        // final state from what we already know instead of refetching.
+        renderService({ running: false, pid: null });
+        toggle.disabled = true;
+        msg.textContent = 'Disabled. This page was served by that process — run `npm start` to bring the admin site back.';
+      } else {
+        msg.textContent = 'Disabled.';
+        loadService();
+      }
+      return;
+    }
+
+    loadService();
+  };
+}
+
 function wireCapture() {
   const btn = document.getElementById('capture-btn');
   const input = document.getElementById('capture-name');
@@ -196,6 +296,7 @@ function wireCapture() {
 (async () => {
   try {
     wireCapture();
+    loadService();
     const apps = await loadApps();
     await loadStatus(apps);
   } catch (err) {

@@ -27,6 +27,7 @@ src/
   render/      layout helper (text -> 6x22 grid: wrap, align, color chips)
   apps/        weather, quote, market, news (+ your own)
   scheduler/   cron loop
+  service/     launchd agent for running in the background (macOS)
   web/         admin site (server + static UI)
   engine.js    wires apps + layout + client together
   index.js     entrypoint / CLI
@@ -63,6 +64,46 @@ node src/index.js push quote      # render + write one app to the board now
 
 Open `http://localhost:3000` for the admin site. Previews work **without** an
 API key or a board on the network — only writes need them.
+
+## Running in the background (macOS)
+
+`npm start` only keeps the schedule alive as long as the terminal is open. To
+have the board keep updating after a reboot, run vos as a **launchd user
+agent** — either with the **Background service** toggle on the admin site, or
+from the CLI:
+
+```bash
+node src/index.js service status      # is it installed / running?
+node src/index.js service install     # enable  (writes the plist + starts it)
+node src/index.js service uninstall   # disable (stops it + removes the plist)
+```
+
+The agent supervises a single long-lived `vos serve`, so `config/config.yaml`
+remains the only place timing is defined — nothing is duplicated into launchd.
+`KeepAlive` restarts the process if it exits. Logs land in `logs/service.out.log`
+and `logs/service.err.log`.
+
+| | |
+|---|---|
+| Label | `com.johnisutanto.vos` |
+| Plist | `~/Library/LaunchAgents/com.johnisutanto.vos.plist` |
+
+The plist is generated — re-running `install` overwrites it, so change
+`config/config.yaml` or `.env` rather than editing it by hand.
+
+Two things worth knowing:
+
+- **Toggling from the UI restarts the server.** Enabling hands the port to the
+  supervised copy and exits the foreground process, so the page reconnects on
+  its own after a moment. Disabling stops the process serving that page — the
+  admin site goes away until you run `npm start` again.
+- **Sleep is not backfilled.** `node-cron` fires only while the machine is
+  awake, and a slot missed during sleep does not run late. On a laptop that
+  sleeps overnight, an 8:00 AM slot is skipped rather than deferred.
+
+> **Not macOS?** The toggle hides itself and the CLI exits with a message.
+> Use systemd (`systemd --user`) or a supervisor of your choice to run
+> `node src/index.js serve`.
 
 ## Configuring the schedule
 
@@ -138,4 +179,8 @@ as `?`. Add the app to `config.yaml`'s `schedule` to put it in rotation.
   `vestaboard.local` doesn't resolve, set `VESTABOARD_HOST` to the board's IP.
 - On a render/network error the scheduler logs it and **leaves the board on its
   previous content** (`options.keepOnError`) rather than blanking it.
-- The admin site has no auth — run it on a trusted LAN.
+- The admin site has no auth — run it on a trusted LAN. The one exception is
+  the `/api/service` routes behind the background-service toggle: those install
+  and remove a launchd agent, so they reject any caller that is not on the
+  loopback interface. The toggle is hidden when the page is opened from another
+  machine.

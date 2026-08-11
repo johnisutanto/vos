@@ -7,6 +7,7 @@
 //   push <app>       Render an app and write it to the board once, then exit.
 //   preview <app>    Render an app and print it to the terminal (no write).
 //   capture <name>   Read the board's current content and save it as gallery art.
+//   service <cmd>    Manage the background launchd agent (status|install|uninstall).
 
 import { loadConfig } from './config.js';
 import { createEngine } from './engine.js';
@@ -32,6 +33,9 @@ switch (command) {
     break;
   case 'capture':
     await capture(arg);
+    break;
+  case 'service':
+    await serviceCmd(arg);
     break;
   case undefined:
   case 'serve':
@@ -85,6 +89,49 @@ async function capture(name) {
   console.log(`Saved current board as "${saved}" -> ${file}`);
 }
 
+async function serviceCmd(action) {
+  const service = await import('./service/launchd.js');
+
+  if (!service.supported) {
+    console.error(`Background service requires macOS (launchd); this is ${process.platform}.`);
+    process.exit(1);
+  }
+
+  const describe = (s) => {
+    if (!s.installed && !s.loaded) return 'disabled (not installed)';
+    if (s.running) return `enabled, running (pid ${s.pid})`;
+    if (s.loaded) return 'enabled, loaded but not running — check the logs';
+    return 'installed but not loaded — run `vos service install`';
+  };
+
+  switch (action) {
+    case 'status': {
+      const s = await service.status();
+      console.log(`vos background service: ${describe(s)}`);
+      console.log(`  label: ${s.label}`);
+      console.log(`  plist: ${s.plistPath}`);
+      console.log(`  logs:  ${s.logDir}`);
+      break;
+    }
+    case 'install':
+    case 'enable': {
+      const s = await service.install();
+      console.log(`Installed and started. Status: ${describe(s)}`);
+      console.log(`Admin site: http://localhost:${cfg.env.port}`);
+      break;
+    }
+    case 'uninstall':
+    case 'disable': {
+      await service.uninstall();
+      console.log('Stopped and removed the background service.');
+      break;
+    }
+    default:
+      console.error('Usage: vos service <status|install|uninstall>');
+      process.exit(1);
+  }
+}
+
 async function serve() {
   if (cfg.usedExample) {
     console.warn('[vos] No config/config.yaml found — using config.example.yaml.');
@@ -97,10 +144,22 @@ async function serve() {
   scheduler.start();
 
   const app = createServer({ engine, scheduler, cfg });
-  app.listen(cfg.env.port, () => {
+  const server = app.listen(cfg.env.port, () => {
     console.log(`[vos] admin site: http://localhost:${cfg.env.port}`);
     if (!cfg.env.apiKey) {
       console.warn('[vos] No VESTABOARD_LOCAL_API_KEY set — previews work, writes will fail.');
     }
+  });
+  // The service toggle needs to release this socket before handing the port
+  // to the launchd-supervised copy.
+  app.locals.httpServer = server;
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[vos] port ${cfg.env.port} is already in use.`);
+      console.error('[vos] the background service may already be running — check `vos service status`.');
+      process.exit(1);
+    }
+    throw err;
   });
 }
