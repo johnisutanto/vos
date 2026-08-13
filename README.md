@@ -83,27 +83,45 @@ remains the only place timing is defined — nothing is duplicated into launchd.
 `KeepAlive` restarts the process if it exits. Logs land in `logs/service.out.log`
 and `logs/service.err.log`.
 
+Enabling also installs **scheduled wakes** (a one-time macOS admin prompt): a
+root LaunchDaemon keeps a rolling two-week window of `pmset` one-shot
+wake-or-power-on events, a few minutes before each slot (`options.wakeLeadMinutes`,
+default 3). That is what gets a sleeping Mac up in time. We do **not** use
+`pmset repeat`, which can only hold one repeating wake and would clobber
+anything else already on that Mac.
+
+Install is machine-local. The generated plists capture **this** Mac's node
+binary (`process.execPath`), **this** checkout directory, and **this** user's
+home. Copying the repo to another computer is fine; run `install` (or flip the
+toggle) **on that computer** so it writes its own paths. Do not copy the plists
+between machines.
+
 | | |
 |---|---|
-| Label | `com.johnisutanto.vos` |
-| Plist | `~/Library/LaunchAgents/com.johnisutanto.vos.plist` |
+| User agent | `local.vos` → `~/Library/LaunchAgents/local.vos.plist` |
+| Wake daemon | `local.vos.wake` → `/Library/LaunchDaemons/local.vos.wake.plist` |
+| pmset owner tag | `local.vos` (only these events are cancelled on disable) |
 
-The plist is generated — re-running `install` overwrites it, so change
-`config/config.yaml` or `.env` rather than editing it by hand.
+The plists are generated — re-running `install` overwrites them, so change
+`config/config.yaml` or `.env` rather than editing them by hand.
 
-Two things worth knowing:
+Things worth knowing:
 
 - **Toggling from the UI restarts the server.** Enabling hands the port to the
   supervised copy and exits the foreground process, so the page reconnects on
   its own after a moment. Disabling stops the process serving that page — the
   admin site goes away until you run `npm start` again.
-- **Sleep is not backfilled.** `node-cron` fires only while the machine is
-  awake, and a slot missed during sleep does not run late. On a laptop that
-  sleeps overnight, an 8:00 AM slot is skipped rather than deferred.
+- **macOS will ask for your password** when you enable or disable, because
+  `pmset schedule` requires root. A cancelled prompt leaves the previous state
+  unchanged.
+- **Sleep is still not backfilled.** If a slot is missed (wake failed, lid
+  closed through the lead window), `node-cron` does not run it late.
+- After you edit the schedule, either wait up to an hour for the wake daemon
+  to refresh, or toggle the service off and on.
 
 > **Not macOS?** The toggle hides itself and the CLI exits with a message.
 > Use systemd (`systemd --user`) or a supervisor of your choice to run
-> `node src/index.js serve`.
+> `node src/index.js serve`. There is no equivalent of `pmset` in this repo.
 
 ## Configuring the schedule
 

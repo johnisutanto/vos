@@ -131,23 +131,40 @@ export function createServer({ engine, scheduler, cfg }) {
       if (req.body.enabled) {
         // Already supervised: starting it again would boot out the job that is
         // serving this very request, killing the service instead of renewing
-        // it. Enabling an enabled service is a no-op.
+        // it. Enabling an enabled service is a no-op — except we still try to
+        // install scheduled wakes if this Mac does not have them yet (e.g. a
+        // service that was enabled before wakes existed).
         if (before.running) {
-          return res.json({ ok: true, enabled: true, handoff: false, alreadyRunning: true });
+          if (!before.wakes?.installed) {
+            await service.installWakeDaemon();
+          }
+          return res.json({
+            ok: true, enabled: true, handoff: false, alreadyRunning: true,
+            wakes: (await service.status()).wakes,
+          });
         }
-        // Write the plist now, but hand the port over before starting the
-        // agent: this process is holding :PORT, and a supervised copy that
-        // cannot bind would crash-loop under KeepAlive.
+        // Scheduled wakes need an admin prompt. Do that *before* writing the
+        // user-agent plist or handing off, so a cancelled password leaves this
+        // foreground server running and does not leave a stray LaunchAgent.
+        await service.installWakeDaemon();
         await service.writePlist();
         res.json({ ok: true, enabled: true, handoff: true });
         afterResponse(res, () => handOffTo(service, httpServer));
       } else {
-        res.json({ ok: true, enabled: false, stoppedSelf: before.isSelf });
+        // Cancel wakes (admin prompt) before we kill this process.
+        let wakesError;
+        try {
+          await service.uninstallWakeDaemon();
+        } catch (err) {
+          wakesError = err.message;
+          console.error(`[vos] removing scheduled wakes failed: ${err.message}`);
+        }
+        res.json({ ok: true, enabled: false, stoppedSelf: before.isSelf, wakesError });
         // bootout terminates this process when it is the supervised one, so
         // it has to happen after the response is on the wire.
         afterResponse(res, async () => {
           try {
-            await service.uninstall();
+            await service.uninstallAgent();
           } catch (err) {
             console.error(`[vos] disabling the service failed: ${err.message}`);
           }

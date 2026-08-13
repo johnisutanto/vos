@@ -91,6 +91,33 @@ async function capture(name) {
 
 async function serviceCmd(action) {
   const service = await import('./service/launchd.js');
+  const wakes = await import('./service/pmset-wakes.js');
+
+  if (action === 'wakes') {
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      await wakes.refreshWakes(cfg);
+    } else {
+      const plan = await wakes.planned(cfg);
+      console.log(`Wake plan: ${plan.events.length} event(s), ${plan.leadMinutes} min before each slot, next ${plan.days ?? 14} days.`);
+      for (const ev of plan.events.slice(0, 8)) {
+        console.log(`  ${ev.key}  (before ${ev.app} at ${ev.slot.toTimeString().slice(0, 5)})`);
+      }
+      if (plan.events.length > 8) console.log(`  … ${plan.events.length - 8} more`);
+      if (plan.skipped.length) {
+        console.warn(`Skipped ${plan.skipped.length} cron(s) that are not a simple daily time.`);
+      }
+    }
+    return;
+  }
+  if (action === 'wakes-cancel') {
+    if (typeof process.getuid !== 'function' || process.getuid() !== 0) {
+      console.error('wakes-cancel must run as root (used by service uninstall).');
+      process.exit(1);
+    }
+    await wakes.cancelOurWakes();
+    console.log('Cancelled vos-tagged pmset wake events.');
+    return;
+  }
 
   if (!service.supported) {
     console.error(`Background service requires macOS (launchd); this is ${process.platform}.`);
@@ -111,6 +138,13 @@ async function serviceCmd(action) {
       console.log(`  label: ${s.label}`);
       console.log(`  plist: ${s.plistPath}`);
       console.log(`  logs:  ${s.logDir}`);
+      if (s.wakes?.error) {
+        console.log(`  wakes: error — ${s.wakes.error}`);
+      } else if (s.wakes?.installed) {
+        console.log(`  wakes: ${s.wakes.count} scheduled, ${s.wakes.leadMinutes} min lead, next ${s.wakes.next || '(none yet)'}`);
+      } else {
+        console.log('  wakes: not installed (macOS will ask for admin when you enable)');
+      }
       break;
     }
     case 'install':
@@ -118,12 +152,15 @@ async function serviceCmd(action) {
       const s = await service.install();
       console.log(`Installed and started. Status: ${describe(s)}`);
       console.log(`Admin site: http://localhost:${cfg.env.port}`);
+      if (s.wakes?.installed) {
+        console.log(`Scheduled wakes: ${s.wakes.count} event(s), ${s.wakes.leadMinutes} min before each slot.`);
+      }
       break;
     }
     case 'uninstall':
     case 'disable': {
       await service.uninstall();
-      console.log('Stopped and removed the background service.');
+      console.log('Stopped the background service and removed scheduled wakes.');
       break;
     }
     default:

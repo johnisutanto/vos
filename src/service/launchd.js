@@ -16,9 +16,16 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { installWakeDaemon, uninstallWakeDaemon, wakesStatus } from './pmset-wakes.js';
+
+export { installWakeDaemon, uninstallWakeDaemon };
+
 const execFileAsync = promisify(execFile);
 
-export const LABEL = 'com.johnisutanto.vos';
+// Machine-agnostic on purpose: the same checkout can be installed on any Mac.
+// Paths in the generated plist are captured from *this* process at install time
+// (this machine's node binary, this checkout's directory, this user's home).
+export const LABEL = 'local.vos';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENTRY = join(ROOT, 'src', 'index.js');
@@ -108,6 +115,7 @@ export async function status() {
   // is loaded but not currently running, the PID key is absent instead.
   const pidMatch = res.ok ? res.stdout.match(/"PID"\s*=\s*(\d+)/) : null;
   const pid = pidMatch ? Number(pidMatch[1]) : null;
+  const wakes = await loadWakes();
   return {
     supported: true,
     installed,
@@ -120,7 +128,16 @@ export async function status() {
     label: LABEL,
     plistPath: PLIST_PATH,
     logDir: LOG_DIR,
+    wakes,
   };
+}
+
+async function loadWakes() {
+  try {
+    return await wakesStatus();
+  } catch (err) {
+    return { installed: false, error: err.message };
+  }
 }
 
 export async function writePlist() {
@@ -152,11 +169,14 @@ export async function bootout() {
 }
 
 export async function install() {
+  // Admin prompt first. If it is cancelled, do not leave a LaunchAgents plist
+  // behind that macOS would auto-load at the next login.
+  await installWakeDaemon();
   await writePlist();
   return bootstrap();
 }
 
-export async function uninstall() {
+export async function uninstallAgent() {
   assertSupported();
   // Remove the plist *before* booting out. When the caller is the supervised
   // process, bootout terminates it mid-call, so anything after that line never
@@ -165,5 +185,11 @@ export async function uninstall() {
   // bootout targets the loaded job by label, so the missing file is fine.
   await rm(PLIST_PATH, { force: true });
   await bootout();
+}
+
+export async function uninstall() {
+  assertSupported();
+  await uninstallWakeDaemon();
+  await uninstallAgent();
   return status();
 }

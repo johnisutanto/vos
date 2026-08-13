@@ -176,6 +176,17 @@ async function waitForServer({ tries = 30, delayMs = 500 } = {}) {
   return false;
 }
 
+function wakeBlurb(state) {
+  const w = state.wakes;
+  if (!w) return '';
+  if (w.error) return ` Scheduled wakes: ${w.error}`;
+  if (!w.installed) {
+    return ' The Mac will not wake from sleep until scheduled wakes are installed (macOS will ask for your password when you enable).';
+  }
+  const next = w.next ? ` Next wake ${w.next}.` : '';
+  return ` Wakes from sleep ${w.leadMinutes} min before each slot.${next}`;
+}
+
 function renderService(state) {
   const toggle = document.getElementById('service-toggle');
   const label = document.getElementById('service-state');
@@ -185,7 +196,7 @@ function renderService(state) {
   toggle.disabled = false;
   label.textContent = state.running ? 'Enabled' : 'Disabled';
   detail.textContent = state.running
-    ? `Running in the background (pid ${state.pid}). Survives reboot.`
+    ? `Running in the background (pid ${state.pid}). Survives reboot.${wakeBlurb(state)}`
     : 'Not running in the background. The schedule only fires while a terminal runs vos.';
 }
 
@@ -211,7 +222,9 @@ async function loadService() {
     const enabling = toggle.checked;
     toggle.disabled = true;
     msg.className = 'msg';
-    msg.textContent = enabling ? 'Installing…' : 'Stopping…';
+    msg.textContent = enabling
+      ? 'Installing… macOS may ask for your password to schedule wake-from-sleep.'
+      : 'Stopping… macOS may ask for your password to remove scheduled wakes.';
 
     let result;
     try {
@@ -233,7 +246,7 @@ async function loadService() {
       const back = await waitForServer();
       if (back) {
         msg.className = 'msg ok';
-        msg.textContent = 'Enabled. The background service is now serving this page.';
+        msg.textContent = 'Enabled. The background service is now serving this page, and this Mac will wake before each slot.';
         loadService();
       } else {
         msg.className = 'msg bad';
@@ -250,6 +263,10 @@ async function loadService() {
         renderService({ running: false, pid: null });
         toggle.disabled = true;
         msg.textContent = 'Disabled. This page was served by that process — run `npm start` to bring the admin site back.';
+        if (result.wakesError) {
+          msg.className = 'msg bad';
+          msg.textContent += ` Scheduled wakes may still be present: ${result.wakesError}`;
+        }
       } else {
         msg.textContent = 'Disabled.';
         loadService();

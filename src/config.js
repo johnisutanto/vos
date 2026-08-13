@@ -21,6 +21,8 @@ export async function loadConfig() {
   cfg.schedule = cfg.schedule || [];
   cfg.apps = cfg.apps || {};
   cfg.options = cfg.options || { keepOnError: true };
+  if (cfg.options.keepOnError === undefined) cfg.options.keepOnError = true;
+  if (cfg.options.wakeLeadMinutes === undefined) cfg.options.wakeLeadMinutes = 3;
 
   cfg.env = {
     apiKey: process.env.VESTABOARD_LOCAL_API_KEY || '',

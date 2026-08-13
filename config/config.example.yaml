@@ -15,6 +15,9 @@ options:
   # If a scheduled render fails, leave the board on its previous content
   # rather than blanking it.
   keepOnError: true
+  # Minutes before each slot to wake the Mac from sleep (pmset). 0 disables
+  # the lead but still installs the wake daemon. Ignored on non-macOS.
+  wakeLeadMinutes: 3
 
 # The rotation. Each entry maps a cron expression to an app id.
 # Cron format: "minute hour day month weekday" (node-cron, host timezone).
