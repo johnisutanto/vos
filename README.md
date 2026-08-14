@@ -39,6 +39,9 @@ src/
    ```bash
    npm install
    ```
+   The repo pins `registry.npmjs.org` in `.npmrc` so this works off the
+   Salesforce VPN. Do not delete that file — without it, a work-laptop
+   `~/.npmrc` will bake Nexus URLs back into `package-lock.json`.
 2. **Configure:**
    ```bash
    cp .env.example .env
