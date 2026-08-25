@@ -161,13 +161,46 @@ export async function restart() {
   return bootstrap();
 }
 
+async function sleep(ms) {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+async function loadedPid() {
+  const res = await launchctl(['list', LABEL]);
+  if (!res.ok) return null;
+  const m = res.stdout.match(/"PID"\s*=\s*(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+async function unloadAgent() {
+  // Path form first: more reliable than label-only when KeepAlive is racing.
+  await launchctl(['bootout', domainTarget(), PLIST_PATH]);
+  await launchctl(['bootout', `${domainTarget()}/${LABEL}`]);
+  // Deprecated but still the reliable way to drop a ~/Library/LaunchAgents job
+  // from a non-Aqua context (Cursor terminal, SSH) where gui bootstrap fails.
+  await launchctl(['unload', PLIST_PATH]);
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (await loadedPid() === null) return;
+    await sleep(150);
+  }
+}
+
 export async function bootstrap() {
   assertSupported();
-  // Clear any previous definition so bootstrap does not fail on a stale one.
-  await launchctl(['bootout', `${domainTarget()}/${LABEL}`]);
-  const res = await launchctl(['bootstrap', domainTarget(), PLIST_PATH]);
+  await unloadAgent();
+  await sleep(250);
+
+  let res = await launchctl(['bootstrap', domainTarget(), PLIST_PATH]);
   if (!res.ok) {
-    throw new Error(`launchctl bootstrap failed: ${res.stderr.trim() || `exit ${res.code}`}`);
+    // 125: "Domain does not support specified action" — typical when this
+    // process is not in an Aqua gui session (IDE terminal, SSH). load(1)
+    // still registers a plist that lives in ~/Library/LaunchAgents.
+    res = await launchctl(['load', '-w', PLIST_PATH]);
+  }
+  if (!res.ok) {
+    const detail = (res.stderr || res.stdout || `exit ${res.code}`).trim();
+    throw new Error(`launchctl failed to start ${LABEL}: ${detail}`);
   }
   return status();
 }
