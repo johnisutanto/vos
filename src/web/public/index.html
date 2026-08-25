@@ -20,7 +20,7 @@
 
     <section id="service-section" hidden>
       <h2>Background service</h2>
-      <p class="hint">Keeps vos running after reboot, and schedules Mac wakes a few minutes before each slot. Closing a MacBook lid usually will <em>not</em> wake it (Apple Silicon ignores software wakes until you open the lid or use clamshell mode: power + external display). Enabling asks for your macOS password once.</p>
+      <p class="hint">Keeps vos running after reboot. While enabled on AC power, caffeinate blocks idle sleep so the scheduler is not frozen (Energy Saver "sleep after 1 minute" is why a lid-open Mac still missed slots). Closing the lid on Apple Silicon still sleeps — use clamshell (power + display) or leave the lid open.</p>
       <div class="service">
         <label class="switch">
           <input type="checkbox" id="service-toggle" aria-label="Run vos as a background service" />

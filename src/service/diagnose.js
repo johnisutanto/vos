@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { LABEL, paths as agentPaths } from './launchd.js';
+import { paths as agentPaths, status as agentStatus } from './launchd.js';
 import { OWNER, paths as wakePaths, listOurScheduledEvents, wakesStatus } from './pmset-wakes.js';
 
 const execFileAsync = promisify(execFile);
@@ -62,11 +62,14 @@ export async function diagnose(cfg) {
     say('');
   }
 
-  const statusOut = await cmd('launchctl', ['list', LABEL]);
+  const agent = await agentStatus();
   const agentPlist = agentPaths.plist;
+  const plistBody = existsSync(agentPlist) ? readFileSync(agentPlist, 'utf8') : '';
+  const caffeinated = /caffeinate/.test(plistBody);
   say('USER AGENT (vos serve)');
   say(`  plist:     ${agentPlist} ${existsSync(agentPlist) ? 'present' : 'MISSING'}`);
-  say(`  launchctl: ${statusOut.split('\n')[0] || statusOut || 'not loaded'}`);
+  say(`  running:   ${agent.running ? `yes (pid ${agent.pid})` : 'NO'}`);
+  say(`  caffeinate:${caffeinated ? ' yes (-i -s; blocks idle sleep on AC)' : ' NO — idle sleep will freeze the scheduler. Run: node src/index.js service restart'}`);
   say('');
 
   const daemonPlist = wakePaths.daemonPlist;
@@ -76,10 +79,11 @@ export async function diagnose(cfg) {
 
   const wakes = await wakesStatus(cfg);
   const ours = await listOurScheduledEvents();
+  const dupes = ours.length - new Set(ours.map((e) => e.key)).size;
   say('PMSET ONE-SHOT WAKES');
   say(`  owner:     ${OWNER}`);
   say(`  daemon:    ${wakes.installed ? 'installed' : 'NOT installed'}`);
-  say(`  count:     ${ours.length} (want a rolling ~2 weeks; 0 means wakes never applied)`);
+  say(`  count:     ${ours.length} unique-ish (${dupes} duplicate${dupes === 1 ? '' : 's'}; rolling ~2 weeks)`);
   say(`  lead:      ${wakes.leadMinutes} min before each slot`);
   say(`  next:      ${wakes.next || '(none)'}`);
   if (ours.length) {
@@ -98,6 +102,12 @@ export async function diagnose(cfg) {
   say('POWER SETTINGS (pmset -g)');
   for (const [k, v] of Object.entries(interesting)) say(`  ${k}: ${v}`);
   if (!Object.keys(interesting).length) say(pmset.split('\n').slice(0, 16).map((l) => `  ${l}`).join('\n'));
+  const sleepMins = String(interesting.sleep || '').match(/^(\d+)/);
+  if (sleepMins && Number(sleepMins[1]) > 0 && !caffeinated) {
+    say(`  ** idle sleep is ${sleepMins[1]} min. Lid open does not matter — the Mac`);
+    say('     still sleeps, DarkWakes ~45s, and vos (a user-session job) stays frozen.');
+    say('     After git pull, run: node src/index.js service restart');
+  }
   say('');
 
   say('ALL SCHEDULED POWER EVENTS (pmset -g sched)');
@@ -124,14 +134,15 @@ export async function diagnose(cfg) {
   say('');
 
   say('HOW TO READ THIS');
-  say('  • count 0 + daemon MISSING: the admin prompt was cancelled or install');
-  say(`    was never run on this Mac. Re-run: node src/index.js service install`);
-  say('  • count > 0 but lid closed still sleeps: expected on Apple Silicon.');
-  say('    Use clamshell (power + display) or leave the lid open.');
-  say('  • DarkWake without FullWake: the Mac blinked awake for maintenance');
-  say('    and went back to sleep; the user-session scheduler stays frozen.');
-  say(`  • After opening the lid, check ${join(logDir, 'service.out.log')} for`);
-  say('    "[scheduler] catch-up pushed …" — that means the thaw path worked.');
+  say('  • count 0 + daemon MISSING: run node src/index.js service install');
+  say('  • sleep: 1 (or any idle timer) + no caffeinate in the plist: the Mac');
+  say('    idle-sleeps with the lid OPEN. That is this failure mode. Fix:');
+  say('    git pull && node src/index.js service restart');
+  say('  • DarkWake without FullWake: maintenance blink; scheduler stays frozen.');
+  say('    caffeinate -i -s in the user agent prevents idle sleep on AC power.');
+  say('  • Lid closed on Apple Silicon: still sleeps. Clamshell or leave lid open.');
+  say(`  • After restart, ${join(logDir, 'service.out.log')} should show`);
+  say('    "[scheduler] catch-up …" then "pushed …" for the current slot.');
 
   return lines.join('\n');
 }

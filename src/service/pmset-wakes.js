@@ -55,12 +55,15 @@ function isRoot() {
   return typeof process.getuid === 'function' && process.getuid() === 0;
 }
 
-function buildDaemonPlist() {
+function buildDaemonPlist(tz) {
   // Capture this machine's node and checkout. A plist copied from another Mac
   // would point at the wrong paths — always `vos service install` on the Mac
   // that will run it.
   const args = [process.execPath, ENTRY, 'service', 'wakes'];
   const logDir = join(ROOT, 'logs');
+  const tzXml = tz
+    ? `\t\t<key>TZ</key>\n\t\t<string>${xmlEscape(tz)}</string>\n`
+    : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -79,7 +82,7 @@ ${args.map((a) => `\t\t<string>${xmlEscape(a)}</string>`).join('\n')}
 \t\t<string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 \t\t<key>HOME</key>
 \t\t<string>${xmlEscape(homedir())}</string>
-\t</dict>
+${tzXml}\t</dict>
 \t<key>RunAtLoad</key>
 \t<true/>
 \t<key>StartInterval</key>
@@ -206,18 +209,21 @@ export async function refreshWakes(cfg) {
     console.warn(`[vos] skipping wake for ${entry.app || '?'} (cron "${entry.cron}" is not a simple daily time)`);
   }
   const desired = new Set(plan.events.map((e) => e.key));
-  const existing = new Set((await listOurScheduledEvents()).map((e) => e.key));
-
+  const listed = await listOurScheduledEvents();
+  const kept = new Set();
+  for (const ev of listed) {
+    if (desired.has(ev.key) && !kept.has(ev.key)) {
+      kept.add(ev.key);
+      continue;
+    }
+    spawnSync('pmset', ['schedule', 'cancel', ev.type, ev.key, OWNER], { encoding: 'utf8' });
+  }
   for (const key of desired) {
-    if (existing.has(key)) continue;
+    if (kept.has(key)) continue;
     const r = spawnSync('pmset', ['schedule', EVENT_TYPE, key, OWNER], { encoding: 'utf8' });
     if (r.status !== 0) {
       console.error(`[vos] pmset schedule failed for ${key}: ${(r.stderr || r.stdout || '').trim()}`);
     }
-  }
-  for (const ev of await listOurScheduledEvents()) {
-    if (desired.has(ev.key)) continue;
-    spawnSync('pmset', ['schedule', 'cancel', ev.type, ev.key, OWNER], { encoding: 'utf8' });
   }
   await writeLedger([...desired]);
   console.log(`[vos] scheduled ${desired.size} wake(s) through ${formatPmsetDate(plan.until)} (${plan.leadMinutes} min lead)`);
@@ -274,7 +280,7 @@ export async function installWakeDaemon(cfg) {
   }
   await mkdir(join(ROOT, 'logs'), { recursive: true });
   const tmpPlist = join(await mkdtemp(join(tmpdir(), 'vos-wake-')), `${DAEMON_LABEL}.plist`);
-  await writeFile(tmpPlist, buildDaemonPlist());
+  await writeFile(tmpPlist, buildDaemonPlist(loaded.board?.timezone || ''), 'utf8');
   const node = shQuote(process.execPath);
   const entry = shQuote(ENTRY);
   const script = `

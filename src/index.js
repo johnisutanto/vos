@@ -7,7 +7,7 @@
 //   push <app>       Render an app and write it to the board once, then exit.
 //   preview <app>    Render an app and print it to the terminal (no write).
 //   capture <name>   Read the board's current content and save it as gallery art.
-//   service <cmd>    Manage the background launchd agent (status|install|uninstall|diagnose).
+//   service <cmd>    Manage the background launchd agent (status|install|uninstall|restart|diagnose).
 
 import { loadConfig } from './config.js';
 import { createEngine } from './engine.js';
@@ -152,6 +152,12 @@ async function serviceCmd(action) {
       }
       break;
     }
+    case 'restart': {
+      const s = await service.restart();
+      console.log(`Restarted. Status: ${describe(s)}`);
+      console.log('User agent now wraps caffeinate -i -s (no idle sleep on AC). No admin prompt.');
+      break;
+    }
     case 'install':
     case 'enable': {
       const s = await service.install();
@@ -169,7 +175,7 @@ async function serviceCmd(action) {
       break;
     }
     default:
-      console.error('Usage: vos service <status|install|uninstall|diagnose>');
+      console.error('Usage: vos service <status|install|uninstall|restart|diagnose>');
       process.exit(1);
   }
 }

@@ -79,11 +79,14 @@ from the CLI:
 node src/index.js service status      # is it installed / running?
 node src/index.js service diagnose    # why isn't the Mac waking / catching up?
 node src/index.js service install     # enable  (writes the plist + starts it)
+node src/index.js service restart     # rewrite user plist + bounce (no admin prompt)
 node src/index.js service uninstall   # disable (stops it + removes the plist)
 ```
 
-The agent supervises a single long-lived `vos serve`, so `config/config.yaml`
-remains the only place timing is defined — nothing is duplicated into launchd.
+The agent supervises a single long-lived `vos serve` wrapped in
+`caffeinate -i -s`, so while the service is enabled **and the Mac is on AC
+power**, idle sleep will not freeze the scheduler. (Energy Saver can still
+say "sleep after 1 minute" — caffeinate holds an assertion that blocks it.)
 `KeepAlive` restarts the process if it exits. Logs land in `logs/service.out.log`
 and `logs/service.err.log`.
 
@@ -123,14 +126,14 @@ Things worth knowing:
   (lid opened, clamshell, reboot): it pushes the slot that should currently
   be on the board.
 - **Closing a MacBook lid usually will not wake it.** `pmset` scheduled wakes
-  work for *idle* sleep (lid open, display off). On Apple Silicon, the lid
-  magnet forces a deeper sleep that macOS typically will not break for a
-  software wake. `caffeinate` cannot override that. To have the board update
-  on schedule with the lid shut, use **clamshell mode**: power adapter +
-  external display (a cheap HDMI dummy plug counts), *then* close the lid.
-  Or leave the lid open and lock the screen. Run `node src/index.js service
-  diagnose` on that Mac to see whether wakes are registered and what the
-  power log says.
+  work for *idle* sleep only if something prevents the GUI session from
+  freezing — that is why the agent runs under `caffeinate -i -s`. On Apple
+  Silicon, the lid magnet forces a deeper sleep that macOS typically will not
+  break for a software wake. `caffeinate` cannot override lid-close. To have
+  the board update on schedule with the lid shut, use **clamshell mode**:
+  power adapter + external display (a cheap HDMI dummy plug counts), *then*
+  close the lid. Or leave the lid open (with the service enabled, idle sleep
+  is blocked on AC). Run `node src/index.js service diagnose` on that Mac.
 - After you edit the schedule, either wait up to an hour for the wake daemon
   to refresh, or toggle the service off and on.
 
