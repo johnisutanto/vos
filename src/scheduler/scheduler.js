@@ -1,6 +1,7 @@
 // Cron scheduler: fires each configured entry, renders the app, writes to board.
 
 import cron from 'node-cron';
+import { mostRecentlyDue } from '../service/cron-slots.js';
 
 export class Scheduler {
   // engine = { renderApp(id) -> grid, writeGrid(grid), apps }
@@ -10,6 +11,8 @@ export class Scheduler {
     this.keepOnError = keepOnError;
     this.jobs = [];
     this.lastRun = null; // { app, at, ok, error }
+    this._catchUpTimer = null;
+    this._catchingUp = false;
   }
 
   start() {
@@ -23,11 +26,35 @@ export class Scheduler {
       this.jobs.push(job);
       console.log(`[scheduler] scheduled ${entry.app} at "${entry.cron}"`);
     }
+    // Lid-closed Apple Silicon will not wake for pmset events. When the
+    // process thaws (lid opened, clamshell, reboot), push the slot that
+    // should currently be on the board. Polling covers freeze/thaw; the
+    // immediate call covers a fresh launch after a missed morning.
+    this.catchUp();
+    this._catchUpTimer = setInterval(() => this.catchUp(), 60_000);
   }
 
   stop() {
     for (const job of this.jobs) job.stop();
     this.jobs = [];
+    if (this._catchUpTimer) {
+      clearInterval(this._catchUpTimer);
+      this._catchUpTimer = null;
+    }
+  }
+
+  async catchUp() {
+    if (this._catchingUp) return;
+    const due = mostRecentlyDue(this.schedule);
+    if (!due) return;
+    if (this.lastRun?.ok && new Date(this.lastRun.at) >= due.at) return;
+    this._catchingUp = true;
+    try {
+      console.log(`[scheduler] catch-up ${due.app} (slot was ${due.at.toISOString()})`);
+      await this.fire(due.app);
+    } finally {
+      this._catchingUp = false;
+    }
   }
 
   // Render one app and push it. Used by cron and by the admin "Push now" button.

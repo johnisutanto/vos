@@ -77,6 +77,7 @@ from the CLI:
 
 ```bash
 node src/index.js service status      # is it installed / running?
+node src/index.js service diagnose    # why isn't the Mac waking / catching up?
 node src/index.js service install     # enable  (writes the plist + starts it)
 node src/index.js service uninstall   # disable (stops it + removes the plist)
 ```
@@ -117,8 +118,19 @@ Things worth knowing:
 - **macOS will ask for your password** when you enable or disable, because
   `pmset schedule` requires root. A cancelled prompt leaves the previous state
   unchanged.
-- **Sleep is still not backfilled.** If a slot is missed (wake failed, lid
-  closed through the lead window), `node-cron` does not run it late.
+- **Sleep is still not backfilled by cron.** If a slot is missed, `node-cron`
+  does not run it late. vos **does** catch up when the process is awake again
+  (lid opened, clamshell, reboot): it pushes the slot that should currently
+  be on the board.
+- **Closing a MacBook lid usually will not wake it.** `pmset` scheduled wakes
+  work for *idle* sleep (lid open, display off). On Apple Silicon, the lid
+  magnet forces a deeper sleep that macOS typically will not break for a
+  software wake. `caffeinate` cannot override that. To have the board update
+  on schedule with the lid shut, use **clamshell mode**: power adapter +
+  external display (a cheap HDMI dummy plug counts), *then* close the lid.
+  Or leave the lid open and lock the screen. Run `node src/index.js service
+  diagnose` on that Mac to see whether wakes are registered and what the
+  power log says.
 - After you edit the schedule, either wait up to an hour for the wake daemon
   to refresh, or toggle the service off and on.
 

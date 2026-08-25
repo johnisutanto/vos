@@ -7,7 +7,7 @@
 //   push <app>       Render an app and write it to the board once, then exit.
 //   preview <app>    Render an app and print it to the terminal (no write).
 //   capture <name>   Read the board's current content and save it as gallery art.
-//   service <cmd>    Manage the background launchd agent (status|install|uninstall).
+//   service <cmd>    Manage the background launchd agent (status|install|uninstall|diagnose).
 
 import { loadConfig } from './config.js';
 import { createEngine } from './engine.js';
@@ -132,6 +132,11 @@ async function serviceCmd(action) {
   };
 
   switch (action) {
+    case 'diagnose': {
+      const { diagnose } = await import('./service/diagnose.js');
+      console.log(await diagnose(cfg));
+      break;
+    }
     case 'status': {
       const s = await service.status();
       console.log(`vos background service: ${describe(s)}`);
@@ -164,7 +169,7 @@ async function serviceCmd(action) {
       break;
     }
     default:
-      console.error('Usage: vos service <status|install|uninstall>');
+      console.error('Usage: vos service <status|install|uninstall|diagnose>');
       process.exit(1);
   }
 }

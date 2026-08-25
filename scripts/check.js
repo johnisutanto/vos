@@ -5,7 +5,7 @@
 import { loadConfig } from '../src/config.js';
 import { createEngine } from '../src/engine.js';
 import { isValidGrid, gridToText } from '../src/vestaboard/characters.js';
-import { parseDailyCron, planWakes, formatPmsetDate } from '../src/service/cron-slots.js';
+import { parseDailyCron, planWakes, formatPmsetDate, mostRecentlyDue } from '../src/service/cron-slots.js';
 import { parsePmsetSched, OWNER } from '../src/service/pmset-wakes.js';
 
 const cfg = await loadConfig();
@@ -72,6 +72,28 @@ for (const id of engine.apps.keys()) {
     failures++;
   } else {
     console.log(`OK: wake plan ${plan.events.length} events, skipped ${plan.skipped.length} unparseable`);
+  }
+
+  const noonThu = new Date(2026, 7, 13, 12, 0, 0);
+  const dueNoon = mostRecentlyDue([
+    { cron: '0 8 * * *', app: 'weather' },
+    { cron: '0 14 * * 1-5', app: 'market' },
+  ], noonThu);
+  if (dueNoon?.app !== 'weather' || dueNoon.at.getHours() !== 8) {
+    console.error('FAIL: mostRecentlyDue at Thursday noon should be weather 08:00', dueNoon);
+    failures++;
+  } else {
+    console.log('OK: mostRecentlyDue Thursday 12:00 -> weather 08:00');
+  }
+  const dueAfternoon = mostRecentlyDue([
+    { cron: '0 8 * * *', app: 'weather' },
+    { cron: '0 14 * * 1-5', app: 'market' },
+  ], new Date(2026, 7, 13, 15, 0, 0));
+  if (dueAfternoon?.app !== 'market') {
+    console.error('FAIL: mostRecentlyDue at Thursday 15:00 should be market', dueAfternoon);
+    failures++;
+  } else {
+    console.log('OK: mostRecentlyDue Thursday 15:00 -> market');
   }
 }
 

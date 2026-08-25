@@ -75,6 +75,36 @@ export function formatLocalTime(d) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Most recent slot that should already have run by `now`. Used to catch up
+// after sleep: node-cron does not backfill, and a lid-closed Mac will not
+// wake, so the first chance to update the board is when the process thaws.
+export function lastSlotAtOrBefore(parsed, now) {
+  const start = startOfLocalDay(now);
+  for (let i = 0; i < 8; i++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() - i);
+    if (!parsed.weekdays.has(day.getDay())) continue;
+    const slot = new Date(
+      day.getFullYear(), day.getMonth(), day.getDate(),
+      parsed.hour, parsed.minute, 0, 0,
+    );
+    if (slot <= now) return slot;
+  }
+  return null;
+}
+
+export function mostRecentlyDue(schedule, now = new Date()) {
+  let best = null;
+  for (const entry of schedule || []) {
+    const parsed = parseDailyCron(entry.cron);
+    if (!parsed || !entry.app) continue;
+    const at = lastSlotAtOrBefore(parsed, now);
+    if (!at) continue;
+    if (!best || at > best.at) best = { app: entry.app, at, cron: entry.cron };
+  }
+  return best;
+}
+
 // Unique wake times a few minutes before each upcoming slot. Entries whose
 // cron we cannot parse are returned in `skipped` so the caller can warn.
 export function planWakes(schedule, {
