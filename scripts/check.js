@@ -7,6 +7,7 @@ import { createEngine } from '../src/engine.js';
 import { isValidGrid, gridToText } from '../src/vestaboard/characters.js';
 import { parseDailyCron, planWakes, formatPmsetDate, mostRecentlyDue } from '../src/service/cron-slots.js';
 import { parsePmsetSched, OWNER } from '../src/service/pmset-wakes.js';
+import { moonInfo } from '../src/apps/evening/index.js';
 
 const cfg = await loadConfig();
 const engine = await createEngine(cfg);
@@ -111,6 +112,21 @@ Scheduled power events:
     failures++;
   } else {
     console.log('OK: parsePmsetSched keeps only local.vos events (does not touch repeating wakes)');
+  }
+}
+
+{
+  const newMoon = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
+  const atNew = moonInfo(newMoon);
+  const atFull = moonInfo(new Date(newMoon.getTime() + 14.765 * 86400000));
+  if (atNew.phase !== 'NEW' || atNew.illum > 5) {
+    console.error('FAIL: moonInfo at known new moon', atNew);
+    failures++;
+  } else if (atFull.phase !== 'FULL' || atFull.illum < 95) {
+    console.error('FAIL: moonInfo at known full moon', atFull);
+    failures++;
+  } else {
+    console.log(`OK: moonInfo NEW ${atNew.illum}% / FULL ${atFull.illum}%`);
   }
 }
 

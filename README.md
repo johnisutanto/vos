@@ -66,7 +66,9 @@ node src/index.js push quote      # render + write one app to the board now
 ```
 
 Open `http://localhost:3000` for the admin site. Previews work **without** an
-API key or a board on the network — only writes need them.
+API key or a board on the network — only writes need them. The **Schedule**
+toggle pauses timed writes (cron and catch-up) without stopping vos; **Push
+now** still works. That choice is stored in `logs/paused` and survives restarts.
 
 ## Running in the background (macOS)
 
@@ -154,7 +156,7 @@ schedule:
   - cron: "0 13 * * *"   # 1 PM PT — after the 4 PM ET market close
     app: market
   - cron: "0 18 * * *"   # 6 PM
-    app: news
+    app: evening
 ```
 
 > **Timezone:** cron fires in the **host's** local timezone. The default
@@ -204,10 +206,11 @@ as `?`. Add the app to `config.yaml`'s `schedule` to put it in rotation.
 
 | App       | Source                                   | Key? |
 |-----------|------------------------------------------|------|
-| `weather` | US National Weather Service (`api.weather.gov`) | No |
-| `quote`   | Bundled `quotes.json` (rotates by day)   | No   |
-| `market`  | Stooq CSV quotes                         | No   |
-| `news`    | Public RSS feed (NPR by default)         | No   |
+| `weather` | Open-Meteo current + today's high/low    | No |
+| `evening` | Open-Meteo tonight/tomorrow + local moon | No |
+| `quote`   | ZenQuotes, bundled `quotes.json` fallback | No |
+| `market`  | Public quotes                            | No |
+| `news`    | Optional; not in the default rotation    | No |
 
 ## Notes
 
@@ -219,4 +222,5 @@ as `?`. Add the app to `config.yaml`'s `schedule` to put it in rotation.
   the `/api/service` routes behind the background-service toggle: those install
   and remove a launchd agent, so they reject any caller that is not on the
   loopback interface. The toggle is hidden when the page is opened from another
-  machine.
+  machine. The **Schedule** toggle pauses timed writes only (cron and catch-up);
+  it survives restarts and still allows Push now.

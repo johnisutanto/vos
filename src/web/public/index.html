@@ -15,6 +15,18 @@
   <main>
     <section>
       <h2>Daily Schedule</h2>
+      <p class="hint">Timed pushes to the board. Pause leaves vos running (admin site, background service) but skips cron and catch-up. Push now still works.</p>
+      <div class="service">
+        <label class="switch">
+          <input type="checkbox" id="automation-toggle" aria-label="Run the daily schedule" />
+          <span class="slider"></span>
+        </label>
+        <div>
+          <div id="automation-state" class="name">Checking…</div>
+          <div id="automation-detail" class="desc">Checking…</div>
+        </div>
+      </div>
+      <div id="automation-msg" class="msg"></div>
       <div id="timeline" class="timeline"></div>
     </section>
 

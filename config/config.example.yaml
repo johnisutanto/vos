@@ -32,8 +32,8 @@ schedule:
     app: market
   - cron: "0 16 * * *"   # 4:00 PM — currency exchange
     app: currency
-  - cron: "0 18 * * *"   # 6:00 PM — headline news
-    app: news
+  - cron: "0 18 * * *"   # 6:00 PM — tonight + tomorrow + moon
+    app: evening
 
 # Optional per-app config overrides. Keys here are merged over the app's
 # manifest.config. Example:

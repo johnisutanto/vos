@@ -82,13 +82,17 @@ async function loadStatus(apps) {
   const keyState = sched.hasApiKey
     ? '<span class="ok">API key set</span>'
     : '<span class="bad">no API key (previews only)</span>';
+  const paused = sched.paused
+    ? ' · <span class="bad">schedule paused</span>'
+    : '';
   const last = sched.lastRun
     ? ` · last: ${sched.lastRun.app} ${sched.lastRun.ok ? '<span class="ok">ok</span>' : '<span class="bad">failed</span>'}`
     : '';
-  status.innerHTML = `${sched.host} · ${keyState}${last}`;
+  status.innerHTML = `${sched.host} · ${keyState}${paused}${last}`;
 
   const timeline = document.getElementById('timeline');
   timeline.innerHTML = '';
+  timeline.classList.toggle('paused', Boolean(sched.paused));
   const sorted = [...sched.schedule].sort((a, b) => fmtCron(a.cron).localeCompare(fmtCron(b.cron)));
   for (const slot of sorted) {
     const app = byId[slot.app] || { name: slot.app, description: '(app not found)' };
@@ -98,6 +102,49 @@ async function loadStatus(apps) {
       <div><div class="name">${app.name}</div><div class="desc">${app.description}</div></div>`;
     timeline.appendChild(el);
   }
+
+  renderAutomation(sched.paused);
+}
+
+function renderAutomation(paused) {
+  const toggle = document.getElementById('automation-toggle');
+  const state = document.getElementById('automation-state');
+  const detail = document.getElementById('automation-detail');
+  if (!toggle) return;
+  toggle.checked = !paused;
+  toggle.disabled = false;
+  state.textContent = paused ? 'Paused' : 'Running';
+  detail.textContent = paused
+    ? 'Timed slots will not write. Push now and the admin site still work.'
+    : 'Slots write to the board on schedule.';
+}
+
+function wireAutomation() {
+  const toggle = document.getElementById('automation-toggle');
+  const msg = document.getElementById('automation-msg');
+  if (!toggle) return;
+  toggle.onchange = async () => {
+    const running = toggle.checked;
+    toggle.disabled = true;
+    msg.className = 'msg';
+    msg.textContent = running ? 'Resuming…' : 'Pausing…';
+    try {
+      await api('/api/schedule/pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused: !running }),
+      });
+      msg.className = 'msg ok';
+      msg.textContent = running ? 'Schedule resumed.' : 'Schedule paused.';
+      const apps = await api('/api/apps');
+      await loadStatus(apps);
+    } catch (err) {
+      msg.className = 'msg bad';
+      msg.textContent = err.message;
+      toggle.checked = !running;
+      toggle.disabled = false;
+    }
+  };
 }
 
 async function loadApps() {
@@ -313,6 +360,7 @@ function wireCapture() {
 (async () => {
   try {
     wireCapture();
+    wireAutomation();
     loadService();
     const apps = await loadApps();
     await loadStatus(apps);

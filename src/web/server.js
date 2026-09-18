@@ -70,6 +70,7 @@ export function createServer({ engine, scheduler, cfg }) {
       board: { rows: engine.rows, columns: engine.columns, timezone: cfg.board.timezone || null },
       schedule: cfg.schedule,
       lastRun: scheduler.lastRun,
+      paused: scheduler.paused,
       host: cfg.env.host,
       hasApiKey: Boolean(cfg.env.apiKey),
     });
@@ -87,8 +88,20 @@ export function createServer({ engine, scheduler, cfg }) {
 
   // Render + write to the board now.
   app.post('/api/apps/:id/push', async (req, res) => {
-    const result = await scheduler.fire(req.params.id);
+    const result = await scheduler.fire(req.params.id, { force: true });
     res.status(result.ok ? 200 : 502).json(result);
+  });
+
+  // Pause or resume timed slots. Manual "Push now" still writes.
+  app.post('/api/schedule/pause', async (req, res) => {
+    if (typeof req.body?.paused !== 'boolean') {
+      return res.status(400).json({ error: 'Body must be { "paused": true | false }' });
+    }
+    try {
+      res.json(await scheduler.setPaused(req.body.paused));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Save the board's current content as a gallery art design.

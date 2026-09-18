@@ -1,0 +1,11 @@
+{
+  "id": "evening",
+  "name": "Evening Sky",
+  "description": "Tonight's conditions, tomorrow's forecast, and the moon phase. Replaces the 6 PM news slot. Same Open-Meteo coords as weather; moon is computed locally (no extra API).",
+  "schedule": [{ "cron": "0 18 * * *", "label": "Evening" }],
+  "config": {
+    "zip": "98115",
+    "latitude": 47.6837,
+    "longitude": -122.2969
+  }
+}

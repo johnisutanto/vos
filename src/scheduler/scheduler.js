@@ -1,7 +1,29 @@
 // Cron scheduler: fires each configured entry, renders the app, writes to board.
 
 import cron from 'node-cron';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { mostRecentlyDue } from '../service/cron-slots.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PAUSE_FILE = join(ROOT, 'logs', 'paused');
+
+async function readPaused() {
+  try {
+    if (!existsSync(PAUSE_FILE)) return false;
+    return (await readFile(PAUSE_FILE, 'utf8')).trim() === '1';
+  } catch {
+    return false;
+  }
+}
+
+async function writePaused(paused) {
+  await mkdir(dirname(PAUSE_FILE), { recursive: true });
+  await writeFile(PAUSE_FILE, paused ? '1\n' : '0\n', 'utf8');
+}
 
 export class Scheduler {
   // engine = { renderApp(id) -> grid, writeGrid(grid), apps }
@@ -11,11 +33,13 @@ export class Scheduler {
     this.keepOnError = keepOnError;
     this.jobs = [];
     this.lastRun = null; // { app, at, ok, error }
+    this.paused = false;
     this._catchUpTimer = null;
     this._catchingUp = false;
   }
 
-  start() {
+  async start() {
+    this.paused = await readPaused();
     for (const entry of this.schedule) {
       if (!entry.cron || !entry.app) continue;
       if (!cron.validate(entry.cron)) {
@@ -25,6 +49,9 @@ export class Scheduler {
       const job = cron.schedule(entry.cron, () => this.fire(entry.app));
       this.jobs.push(job);
       console.log(`[scheduler] scheduled ${entry.app} at "${entry.cron}"`);
+    }
+    if (this.paused) {
+      console.log('[scheduler] paused — timed slots and catch-up will not write. Push now still works.');
     }
     // Lid-closed Apple Silicon will not wake for pmset events. When the
     // process thaws (lid opened, clamshell, reboot), push the slot that
@@ -43,8 +70,18 @@ export class Scheduler {
     }
   }
 
+  async setPaused(paused) {
+    this.paused = Boolean(paused);
+    await writePaused(this.paused);
+    console.log(this.paused
+      ? '[scheduler] paused — timed slots will not write'
+      : '[scheduler] resumed — timed slots will write again');
+    if (!this.paused) this.catchUp();
+    return { paused: this.paused };
+  }
+
   async catchUp() {
-    if (this._catchingUp) return;
+    if (this.paused || this._catchingUp) return;
     const due = mostRecentlyDue(this.schedule);
     if (!due) return;
     if (this.lastRun?.ok && new Date(this.lastRun.at) >= due.at) return;
@@ -58,7 +95,12 @@ export class Scheduler {
   }
 
   // Render one app and push it. Used by cron and by the admin "Push now" button.
-  async fire(appId) {
+  // force: true skips the pause gate (manual pushes from the UI).
+  async fire(appId, { force = false } = {}) {
+    if (this.paused && !force) {
+      console.log(`[scheduler] skipped ${appId} (paused)`);
+      return { ok: true, skipped: true };
+    }
     const at = new Date().toISOString();
     try {
       const grid = await this.engine.renderApp(appId);

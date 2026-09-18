@@ -189,7 +189,7 @@ async function serve() {
     schedule: cfg.schedule,
     keepOnError: cfg.options.keepOnError,
   });
-  scheduler.start();
+  await scheduler.start();
 
   const app = createServer({ engine, scheduler, cfg });
   const server = app.listen(cfg.env.port, () => {
