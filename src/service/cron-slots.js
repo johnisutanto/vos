@@ -107,6 +107,107 @@ export function mostRecentlyDue(schedule, now = new Date()) {
 
 // Unique wake times a few minutes before each upcoming slot. Entries whose
 // cron we cannot parse are returned in `skipped` so the caller can warn.
+const EVERYDAY = new Set([0, 1, 2, 3, 4, 5, 6]);
+const WEEKDAYS = new Set([1, 2, 3, 4, 5]);
+const WEEKENDS = new Set([0, 6]);
+
+function sameDays(a, b) {
+  if (a.size !== b.size) return false;
+  for (const d of a) {
+    if (!b.has(d)) return false;
+  }
+  return true;
+}
+
+export function daysPreset(weekdays) {
+  if (sameDays(weekdays, EVERYDAY)) return 'everyday';
+  if (sameDays(weekdays, WEEKDAYS)) return 'weekdays';
+  if (sameDays(weekdays, WEEKENDS)) return 'weekends';
+  return 'custom';
+}
+
+export function formatDailyCron({ minute, hour, weekdays }) {
+  const preset = daysPreset(weekdays);
+  let dow = '*';
+  if (preset === 'weekdays') dow = '1-5';
+  else if (preset === 'weekends') dow = '0,6';
+  else if (preset === 'custom') dow = [...weekdays].sort((a, b) => a - b).join(',');
+  return `${Number(minute)} ${Number(hour)} * * ${dow}`;
+}
+
+export function parseClock(time) {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(time || '').trim());
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (hour > 23 || minute > 59) return null;
+  return { hour, minute };
+}
+
+// Turn an admin-site slot { time, days, app, cron? } into a cron string.
+export function slotToCron(slot) {
+  if (slot?.days === 'custom') {
+    const parsed = parseDailyCron(slot.cron);
+    if (!parsed) throw new Error('Custom days need a valid cron expression');
+    const clock = slot.time ? parseClock(slot.time) : { hour: parsed.hour, minute: parsed.minute };
+    if (!clock) throw new Error(`Invalid time "${slot.time}"`);
+    return formatDailyCron({ ...clock, weekdays: parsed.weekdays });
+  }
+  const clock = parseClock(slot?.time);
+  if (!clock) throw new Error(`Invalid time "${slot?.time || ''}"`);
+  const weekdays = slot?.days === 'weekdays' ? WEEKDAYS
+    : slot?.days === 'weekends' ? WEEKENDS
+    : slot?.days === 'everyday' || !slot?.days ? EVERYDAY
+    : null;
+  if (!weekdays) throw new Error('Days must be everyday, weekdays, or weekends');
+  return formatDailyCron({ ...clock, weekdays });
+}
+
+export function describeScheduleEntry(entry) {
+  const parsed = parseDailyCron(entry.cron);
+  if (!parsed) {
+    return {
+      app: entry.app,
+      cron: entry.cron,
+      time: '08:00',
+      days: 'everyday',
+      parseable: false,
+    };
+  }
+  return {
+    app: entry.app,
+    cron: entry.cron,
+    time: `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`,
+    days: daysPreset(parsed.weekdays),
+    parseable: true,
+  };
+}
+
+export function normalizeSchedule(entries, knownApps) {
+  if (!Array.isArray(entries)) throw new Error('schedule must be an array');
+  if (entries.length > 48) throw new Error('Too many slots (max 48)');
+  const known = knownApps instanceof Set ? knownApps : new Set(knownApps || []);
+  const out = [];
+  const seen = new Set();
+  for (const [i, raw] of entries.entries()) {
+    const app = String(raw?.app || '').trim();
+    if (!app) throw new Error(`Slot ${i + 1} is missing an app`);
+    if (known.size && !known.has(app)) throw new Error(`Unknown app "${app}"`);
+    const cron = slotToCron(raw);
+    if (seen.has(cron)) throw new Error(`Two slots share the same time and days`);
+    seen.add(cron);
+    out.push({ cron, app });
+  }
+  out.sort((a, b) => cronSortKey(a.cron).localeCompare(cronSortKey(b.cron)));
+  return out;
+}
+
+function cronSortKey(cron) {
+  const parsed = parseDailyCron(cron);
+  if (!parsed) return cron;
+  return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`;
+}
+
 export function planWakes(schedule, {
   from = new Date(),
   days = 14,

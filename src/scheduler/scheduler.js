@@ -40,6 +40,23 @@ export class Scheduler {
 
   async start() {
     this.paused = await readPaused();
+    this._bindJobs();
+    if (this.paused) {
+      console.log('[scheduler] paused — timed slots and catch-up will not write. Push now still works.');
+    }
+    // Lid-closed Apple Silicon will not wake for pmset events. When the
+    // process thaws (lid opened, clamshell, reboot), push the slot that
+    // should currently be on the board. Polling covers freeze/thaw; the
+    // immediate call covers a fresh launch after a missed morning.
+    this.catchUp();
+    if (!this._catchUpTimer) {
+      this._catchUpTimer = setInterval(() => this.catchUp(), 60_000);
+    }
+  }
+
+  _bindJobs() {
+    for (const job of this.jobs) job.stop();
+    this.jobs = [];
     for (const entry of this.schedule) {
       if (!entry.cron || !entry.app) continue;
       if (!cron.validate(entry.cron)) {
@@ -50,15 +67,14 @@ export class Scheduler {
       this.jobs.push(job);
       console.log(`[scheduler] scheduled ${entry.app} at "${entry.cron}"`);
     }
-    if (this.paused) {
-      console.log('[scheduler] paused — timed slots and catch-up will not write. Push now still works.');
-    }
-    // Lid-closed Apple Silicon will not wake for pmset events. When the
-    // process thaws (lid opened, clamshell, reboot), push the slot that
-    // should currently be on the board. Polling covers freeze/thaw; the
-    // immediate call covers a fresh launch after a missed morning.
+  }
+
+  async replaceSchedule(schedule) {
+    this.schedule = schedule;
+    this._bindJobs();
+    console.log('[scheduler] schedule updated from admin site');
     this.catchUp();
-    this._catchUpTimer = setInterval(() => this.catchUp(), 60_000);
+    return { schedule: this.schedule };
   }
 
   stop() {

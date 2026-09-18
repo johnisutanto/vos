@@ -5,8 +5,8 @@ A lightweight Node.js service that rotates useful content onto your
 [Local API](https://docs.vestaboard.com/docs/local-api/introduction) —
 morning weather, a daily quote, an afternoon market wrap, headline news, and
 anything else you build. Each screen is a self-contained **app** with a
-**manifest**, and a small **admin website** shows the schedule and live-previews
-what each app will display on the board.
+**manifest**, and a small **admin website** has a Schedule page for the daily
+rotation and an Apps page with live previews.
 
 Targets the **Flagship** board (6 rows × 22 columns). All the built-in apps use
 **free, no-API-key** data sources.
@@ -15,8 +15,8 @@ Targets the **Flagship** board (6 rows × 22 columns). All the built-in apps use
 
 - A **scheduler** (`node-cron`) fires at times you configure, renders the active
   app to a 6×22 grid of Vestaboard character codes, and writes it to the board.
-- An **admin website** (Express + static UI) shows a daily timeline and a
-  split-flap preview of each app, with a "Push now" button per app.
+- An **admin website** (Express + static UI) has **Schedule** (pause, slots,
+  background service) and **Apps** (split-flap previews and Push now).
 - **Apps** are plugins: drop a folder under `src/apps/<id>/` with a
   `manifest.json` and an `index.js` exporting `render()`. The registry
   auto-discovers it — no core changes needed.
@@ -65,10 +65,11 @@ node src/index.js preview quote   # print an app's output to the terminal
 node src/index.js push quote      # render + write one app to the board now
 ```
 
-Open `http://localhost:3000` for the admin site. Previews work **without** an
-API key or a board on the network — only writes need them. The **Schedule**
-toggle pauses timed writes (cron and catch-up) without stopping vos; **Push
-now** still works. That choice is stored in `logs/paused` and survives restarts.
+Open `http://localhost:3000` for the admin site (**Schedule** and **Apps** in
+the header). Previews work **without** an API key or a board on the network —
+only writes need them. The **Schedule** toggle pauses timed writes (cron and
+catch-up) without stopping vos; **Push now** still works. That choice is stored
+in `logs/paused` and survives restarts.
 
 ## Running in the background (macOS)
 
@@ -145,7 +146,11 @@ Things worth knowing:
 
 ## Configuring the schedule
 
-`config/config.yaml` is the source of truth. Map cron expressions to app ids:
+`config/config.yaml` is the source of truth. Edit it by hand, or use **Daily
+Schedule** on the admin site: change the time and app on a row, **Add slot**
+to append one, then **Save schedule**. That writes `config.yaml` and reloads
+cron immediately (no restart). If you were still on the example file, the
+first save creates `config.yaml`.
 
 ```yaml
 schedule:
@@ -211,6 +216,7 @@ as `?`. Add the app to `config.yaml`'s `schedule` to put it in rotation.
 | `quote`   | ZenQuotes, bundled `quotes.json` fallback | No |
 | `market`  | Public quotes                            | No |
 | `news`    | Optional; not in the default rotation    | No |
+| `word`    | Bundled uncommon English word + definition | No |
 
 ## Notes
 
@@ -223,4 +229,6 @@ as `?`. Add the app to `config.yaml`'s `schedule` to put it in rotation.
   and remove a launchd agent, so they reject any caller that is not on the
   loopback interface. The toggle is hidden when the page is opened from another
   machine. The **Schedule** toggle pauses timed writes only (cron and catch-up);
-  it survives restarts and still allows Push now.
+  it survives restarts and still allows Push now. Adding or editing slots from
+  the admin site writes `config/config.yaml` (anyone on the LAN who can open
+  the site can change the rotation).

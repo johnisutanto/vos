@@ -5,9 +5,11 @@
 import { loadConfig } from '../src/config.js';
 import { createEngine } from '../src/engine.js';
 import { isValidGrid, gridToText } from '../src/vestaboard/characters.js';
-import { parseDailyCron, planWakes, formatPmsetDate, mostRecentlyDue } from '../src/service/cron-slots.js';
+import { parseDailyCron, planWakes, formatPmsetDate, mostRecentlyDue, slotToCron, formatDailyCron } from '../src/service/cron-slots.js';
 import { parsePmsetSched, OWNER } from '../src/service/pmset-wakes.js';
 import { moonInfo } from '../src/apps/evening/index.js';
+import { entryFits } from '../src/apps/word/index.js';
+import { readFile } from 'node:fs/promises';
 
 const cfg = await loadConfig();
 const engine = await createEngine(cfg);
@@ -47,6 +49,19 @@ for (const id of engine.apps.keys()) {
     failures++;
   } else {
     console.log('OK: parseDailyCron rejects step syntax');
+  }
+
+  const daily = slotToCron({ time: '08:00', days: 'everyday', app: 'weather' });
+  const weekdays = slotToCron({ time: '14:00', days: 'weekdays', app: 'market' });
+  const weekends = slotToCron({ time: '09:30', days: 'weekends', app: 'quote' });
+  if (daily !== '0 8 * * *' || weekdays !== '0 14 * * 1-5' || weekends !== '30 9 * * 0,6') {
+    console.error('FAIL: slotToCron', { daily, weekdays, weekends });
+    failures++;
+  } else if (formatDailyCron(parseDailyCron(daily)) !== daily) {
+    console.error('FAIL: formatDailyCron round-trip', daily);
+    failures++;
+  } else {
+    console.log('OK: slotToCron everyday/weekdays/weekends');
   }
 
   // Thursday 2026-08-13 12:00 local. 08:00 is past; 14:00 weekday is ahead.
@@ -127,6 +142,17 @@ Scheduled power events:
     failures++;
   } else {
     console.log(`OK: moonInfo NEW ${atNew.illum}% / FULL ${atFull.illum}%`);
+  }
+}
+
+{
+  const words = JSON.parse(await readFile(new URL('../src/apps/word/words.json', import.meta.url)));
+  const bad = words.filter((w) => !entryFits(w, engine.layout));
+  if (bad.length) {
+    console.error('FAIL: word-of-the-day entries do not fit 6x22', bad.map((w) => w.word));
+    failures++;
+  } else {
+    console.log(`OK: ${words.length} word-of-the-day entries fit the board`);
   }
 }
 

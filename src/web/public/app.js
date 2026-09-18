@@ -45,38 +45,52 @@ function renderBoard(grid) {
   return board;
 }
 
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+let catalog = [];
+let scheduleDirty = false;
+let appsLoad = null;
 
-// Render a day-of-week cron field ("*", "1-5", "0,6", "3") as a short label,
-// or '' for "every day". Returns null if we can't make sense of it.
-function fmtDow(field) {
-  if (field === '*') return '';
-  if (field === '1-5') return 'Mon–Fri';
-  if (field === '0,6' || field === '6,0') return 'Sat/Sun';
-  const nums = field.split(',');
-  if (nums.every((n) => /^\d$/.test(n))) {
-    return nums.map((n) => DOW[Number(n)]).join(', ');
-  }
-  return null; // unrecognized (e.g. step/range we don't special-case)
+const PAGES = ['schedule', 'apps'];
+
+function currentPage() {
+  const hash = (location.hash || '#schedule').replace(/^#/, '');
+  return PAGES.includes(hash) ? hash : 'schedule';
 }
 
-function fmtCron(cron) {
-  // "m h * * <dow>" -> "HH:MM" (+ weekday label); else show raw.
-  const parts = cron.split(/\s+/);
-  if (parts.length === 5 && parts[2] === '*' && parts[3] === '*') {
-    const [m, h, , , dow] = parts;
-    const dowLabel = fmtDow(dow);
-    if (/^\d+$/.test(m) && /^\d+$/.test(h) && dowLabel !== null) {
-      const time = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
-      return dowLabel ? `${time} (${dowLabel})` : time;
-    }
-  }
-  return cron;
+function ensureApps() {
+  if (!appsLoad) appsLoad = loadApps();
+  return appsLoad;
 }
 
-async function loadStatus(apps) {
+function reloadApps() {
+  appsLoad = loadApps();
+  return appsLoad;
+}
+
+function showPage(page) {
+  if (!PAGES.includes(page)) page = 'schedule';
+  document.querySelectorAll('[data-page-panel]').forEach((el) => {
+    el.hidden = el.dataset.pagePanel !== page;
+  });
+  document.querySelectorAll('.nav a').forEach((a) => {
+    a.setAttribute('aria-current', a.dataset.page === page ? 'page' : 'false');
+  });
+  if (page === 'apps') {
+    ensureApps().catch((err) => {
+      const box = document.getElementById('apps');
+      if (box) box.textContent = err.message;
+    });
+  }
+}
+
+function wireNav() {
+  if (!location.hash) history.replaceState(null, '', '#schedule');
+  window.addEventListener('hashchange', () => showPage(currentPage()));
+  showPage(currentPage());
+}
+
+async function loadStatus(apps, { keepEditor = false } = {}) {
+  catalog = apps;
   const sched = await api('/api/schedule');
-  const byId = Object.fromEntries(apps.map((a) => [a.id, a]));
 
   const status = document.getElementById('status');
   const keyState = sched.hasApiKey
@@ -90,20 +104,169 @@ async function loadStatus(apps) {
     : '';
   status.innerHTML = `${sched.host} · ${keyState}${paused}${last}`;
 
-  const timeline = document.getElementById('timeline');
-  timeline.innerHTML = '';
-  timeline.classList.toggle('paused', Boolean(sched.paused));
-  const sorted = [...sched.schedule].sort((a, b) => fmtCron(a.cron).localeCompare(fmtCron(b.cron)));
-  for (const slot of sorted) {
-    const app = byId[slot.app] || { name: slot.app, description: '(app not found)' };
-    const el = document.createElement('div');
-    el.className = 'slot';
-    el.innerHTML = `<div class="time">${fmtCron(slot.cron)}</div>
-      <div><div class="name">${app.name}</div><div class="desc">${app.description}</div></div>`;
-    timeline.appendChild(el);
+  if (!keepEditor || !scheduleDirty) {
+    renderScheduleEditor(sched.schedule, apps);
   }
 
   renderAutomation(sched.paused);
+}
+
+function option(value, label) {
+  const o = document.createElement('option');
+  o.value = value;
+  o.textContent = label;
+  return o;
+}
+
+function markScheduleDirty() {
+  scheduleDirty = true;
+  const msg = document.getElementById('schedule-msg');
+  if (msg && !msg.textContent) {
+    msg.className = 'msg';
+    msg.textContent = 'Unsaved changes.';
+  }
+}
+
+function slotRow(entry, apps) {
+  const el = document.createElement('div');
+  el.className = 'slot edit';
+
+  const time = document.createElement('input');
+  time.type = 'time';
+  time.required = true;
+  time.dataset.field = 'time';
+  time.value = entry.time || '08:00';
+  time.setAttribute('aria-label', 'Time');
+
+  const days = document.createElement('select');
+  days.dataset.field = 'days';
+  days.setAttribute('aria-label', 'Days');
+  days.append(
+    option('everyday', 'Every day'),
+    option('weekdays', 'Weekdays'),
+    option('weekends', 'Weekends'),
+  );
+  if (entry.days === 'custom') days.appendChild(option('custom', 'Custom days'));
+  days.value = entry.days || 'everyday';
+
+  const appSel = document.createElement('select');
+  appSel.dataset.field = 'app';
+  appSel.setAttribute('aria-label', 'App');
+  const sorted = [...apps].sort((a, b) => a.name.localeCompare(b.name));
+  for (const a of sorted) appSel.appendChild(option(a.id, a.name));
+  if (entry.app && !sorted.some((a) => a.id === entry.app)) {
+    appSel.appendChild(option(entry.app, `${entry.app} (missing)`));
+  }
+  if (entry.app) appSel.value = entry.app;
+
+  const cron = document.createElement('input');
+  cron.type = 'hidden';
+  cron.dataset.field = 'cron';
+  cron.value = entry.cron || '';
+
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'secondary';
+  rm.textContent = 'Remove';
+  rm.onclick = () => {
+    el.remove();
+    markScheduleDirty();
+    if (!document.querySelector('#timeline .slot.edit')) renderEmptyHint();
+  };
+
+  el.append(time, days, appSel, cron, rm);
+  el.addEventListener('change', markScheduleDirty);
+  el.addEventListener('input', markScheduleDirty);
+  return el;
+}
+
+function renderEmptyHint() {
+  const timeline = document.getElementById('timeline');
+  if (timeline.querySelector('.slot.edit') || timeline.querySelector('.empty')) return;
+  const empty = document.createElement('div');
+  empty.className = 'slot empty';
+  empty.textContent = 'No slots yet. Add one and save.';
+  timeline.appendChild(empty);
+}
+
+function renderScheduleEditor(schedule, apps) {
+  const timeline = document.getElementById('timeline');
+  timeline.innerHTML = '';
+  scheduleDirty = false;
+  const rows = schedule || [];
+  if (!rows.length) {
+    renderEmptyHint();
+    return;
+  }
+  for (const entry of rows) {
+    timeline.appendChild(slotRow(entry, apps));
+  }
+}
+
+function nextSlotDraft(apps) {
+  const times = [...document.querySelectorAll('#timeline [data-field=time]')].map((i) => i.value);
+  let hour = 8;
+  if (times.length) {
+    const last = times[times.length - 1] || '08:00';
+    const parsed = Number(last.slice(0, 2));
+    hour = Number.isFinite(parsed) ? (parsed + 1) % 24 : 8;
+  }
+  const sorted = [...apps].sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    time: `${String(hour).padStart(2, '0')}:00`,
+    days: 'everyday',
+    app: sorted[0]?.id || '',
+    cron: '',
+  };
+}
+
+function readScheduleDraft() {
+  return [...document.querySelectorAll('#timeline .slot.edit')].map((el) => ({
+    time: el.querySelector('[data-field=time]').value,
+    days: el.querySelector('[data-field=days]').value,
+    app: el.querySelector('[data-field=app]').value,
+    cron: el.querySelector('[data-field=cron]').value,
+  }));
+}
+
+function wireSchedule() {
+  const add = document.getElementById('schedule-add');
+  const save = document.getElementById('schedule-save');
+  const msg = document.getElementById('schedule-msg');
+  if (!add || !save) return;
+
+  add.onclick = () => {
+    const timeline = document.getElementById('timeline');
+    timeline.querySelector('.empty')?.remove();
+    timeline.appendChild(slotRow(nextSlotDraft(catalog), catalog));
+    markScheduleDirty();
+  };
+
+  save.onclick = async () => {
+    save.disabled = true;
+    add.disabled = true;
+    msg.className = 'msg';
+    msg.textContent = 'Saving…';
+    try {
+      const result = await api('/api/schedule', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule: readScheduleDraft() }),
+      });
+      scheduleDirty = false;
+      renderScheduleEditor(result.schedule, catalog);
+      msg.className = 'msg ok';
+      msg.textContent = result.schedule.length
+        ? `Saved ${result.schedule.length} slot${result.schedule.length === 1 ? '' : 's'}.`
+        : 'Saved an empty schedule. Timed writes will not run until you add a slot.';
+    } catch (err) {
+      msg.className = 'msg bad';
+      msg.textContent = err.message;
+    } finally {
+      save.disabled = false;
+      add.disabled = false;
+    }
+  };
 }
 
 function renderAutomation(paused) {
@@ -137,7 +300,7 @@ function wireAutomation() {
       msg.className = 'msg ok';
       msg.textContent = running ? 'Schedule resumed.' : 'Schedule paused.';
       const apps = await api('/api/apps');
-      await loadStatus(apps);
+      await loadStatus(apps, { keepEditor: true });
     } catch (err) {
       msg.className = 'msg bad';
       msg.textContent = err.message;
@@ -348,8 +511,7 @@ function wireCapture() {
       msg.className = 'msg ok';
       msg.textContent = `Saved "${saved}" to the gallery.`;
       input.value = '';
-      // Refresh app cards so the gallery preview reflects the new art.
-      loadApps();
+      reloadApps();
     } catch (err) {
       msg.className = 'msg bad';
       msg.textContent = err.message;
@@ -359,10 +521,12 @@ function wireCapture() {
 
 (async () => {
   try {
+    wireNav();
     wireCapture();
     wireAutomation();
+    wireSchedule();
     loadService();
-    const apps = await loadApps();
+    const apps = await api('/api/apps');
     await loadStatus(apps);
   } catch (err) {
     document.getElementById('status').innerHTML = `<span class="bad">${err.message}</span>`;

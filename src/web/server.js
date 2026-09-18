@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { captureCurrentBoard } from '../apps/gallery/store.js';
 import * as service from '../service/launchd.js';
+import { saveConfig } from '../config.js';
+import { describeScheduleEntry, normalizeSchedule } from '../service/cron-slots.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -68,12 +70,31 @@ export function createServer({ engine, scheduler, cfg }) {
   app.get('/api/schedule', (req, res) => {
     res.json({
       board: { rows: engine.rows, columns: engine.columns, timezone: cfg.board.timezone || null },
-      schedule: cfg.schedule,
+      schedule: (cfg.schedule || []).map(describeScheduleEntry),
       lastRun: scheduler.lastRun,
       paused: scheduler.paused,
       host: cfg.env.host,
       hasApiKey: Boolean(cfg.env.apiKey),
     });
+  });
+
+  // Replace the daily rotation. Applies immediately and writes config.yaml.
+  app.put('/api/schedule', async (req, res) => {
+    try {
+      const schedule = normalizeSchedule(req.body?.schedule, engine.apps.keys());
+      cfg.schedule = schedule;
+      await saveConfig(cfg);
+      await scheduler.replaceSchedule(schedule);
+      res.json({
+        ok: true,
+        schedule: schedule.map(describeScheduleEntry),
+        paused: scheduler.paused,
+        lastRun: scheduler.lastRun,
+      });
+    } catch (err) {
+      const status = /must be|Invalid|Unknown|missing|Too many|share the same/i.test(err.message) ? 400 : 500;
+      res.status(status).json({ error: err.message });
+    }
   });
 
   // Render an app to a grid without writing to the board (for preview).

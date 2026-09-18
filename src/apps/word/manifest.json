@@ -1,0 +1,7 @@
+{
+  "id": "word",
+  "name": "Word of the Day",
+  "description": "An uncommon English word and a short definition that fits the board. Picks one from a bundled list by calendar day (no API key).",
+  "schedule": [],
+  "config": {}
+}
