@@ -4,7 +4,6 @@
   "description": "Top general headline from GNews (gnews.io) — requires an API key. Filtered to North America, Europe, Asia, and South America by source region.",
   "schedule": [{ "cron": "0 18 * * *", "label": "Evening" }],
   "config": {
-    "apiKey": "6b29ec156052a433286fd6688a724267",
     "category": "general",
     "lang": "en",
     "regions": ["north-america", "europe", "asia", "south-america"]

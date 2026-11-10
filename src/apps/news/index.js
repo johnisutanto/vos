@@ -64,13 +64,13 @@ function fits(title, layout) {
 
 export async function render({ config, layout }) {
   const {
-    apiKey,
     category = 'general',
     lang = 'en',
     source,
     regions = ['north-america', 'europe', 'asia', 'south-america'],
   } = config;
-  if (!apiKey) throw new Error('news app needs an apiKey in config (gnews.io)');
+  const apiKey = process.env.GNEWS_API_KEY;
+  if (!apiKey) throw new Error('news app needs GNEWS_API_KEY in .env (gnews.io)');
 
   const url =
     `https://gnews.io/api/v4/top-headlines?category=${encodeURIComponent(category)}` +
